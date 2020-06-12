@@ -5,9 +5,12 @@ import re
 import pickle
 import os
 import urllib.request
+import sys
+from tqdm import tqdm
 
 options = webdriver.FirefoxOptions()
 options.add_argument('--headless')
+options.add_argument('--log-level=3')
 browser = webdriver.Firefox('./gecko',options=options)
 
 if not os.path.exists('fn_imgs'):
@@ -44,7 +47,7 @@ blacklist = [
 
 pages_to_scrape_for_article_links = 76
 
-for page in range(pages_to_scrape_for_article_links):
+for page in tqdm(range(pages_to_scrape_for_article_links)):
     try:
         new_url = fake_news_url + r"page/" + str(urls["page_idx"])
         browser.get(new_url)
@@ -61,9 +64,8 @@ for page in range(pages_to_scrape_for_article_links):
     except:
         with open('urls.pickle', 'wb+') as f:
             pickle.dump(urls, f)
-        print('+1 cycle, 5 new pages scraped for article links')
-
-    page += 1
+        print('Checkpoint. Error in script, data saved.')
+        sys.exit(0)
 
     if page > 75:
         # check4spam page 76 doesn't exist.
@@ -89,9 +91,10 @@ except:
     print("data.pickle not found. File will be created.")
     pass
 
-for url in urls["urls"]:
+for url in tqdm(urls["urls"]):
     try:
         if url in init["url"]:
+            print("url fetched...skipping")
             continue
 
         browser.get(url)
@@ -116,7 +119,7 @@ for url in urls["urls"]:
         for img in images:
             link = img.get_attribute('srcset').split(' ')[0]
             links.append(link)
-        
+
         for i in range(len(links)):
             try:
                 filename = './fn_imgs/'+str(hash(url))+'_'+str(i)+'.jpg'
@@ -145,11 +148,11 @@ for url in urls["urls"]:
         init["url"].append(url)
 
     except:
-
         with open('data.pickle', 'wb+') as f:
             pickle.dump(init, f)
-        print("+5 pages scraped and dumped")
-            
+        print("Checkpoint. Error in script. Data saved.")
+        sys.exit(0)
+
     cnt += 1
 
 if os.path.isfile('data.csv'):
