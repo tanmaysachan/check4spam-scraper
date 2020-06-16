@@ -49,6 +49,9 @@ pages_to_scrape_for_article_links = 76
 
 for page in tqdm(range(pages_to_scrape_for_article_links)):
     try:
+        if page > 75 or urls["page_idx"] > 75:
+            # check4spam page 76 doesn't exist.
+            break
         new_url = fake_news_url + r"page/" + str(urls["page_idx"])
         browser.get(new_url)
         time.sleep(7)
@@ -60,14 +63,15 @@ for page in tqdm(range(pages_to_scrape_for_article_links)):
                     urls["urls"].add(url)
                 except:
                     continue
+
         urls["page_idx"] += 1
     except:
         with open('urls.pickle', 'wb+') as f:
             pickle.dump(urls, f)
         print('Checkpoint. Error in script, data saved.')
-        sys.exit(0)
+        sys.exit(1)
 
-    if page > 75:
+    if page > 75 or urls["page_idx"] > 75:
         # check4spam page 76 doesn't exist.
         break
 
@@ -90,6 +94,8 @@ try:
 except:
     print("data.pickle not found. File will be created.")
     pass
+
+fails = 0
 
 for url in tqdm(urls["urls"]):
     try:
@@ -147,11 +153,17 @@ for url in tqdm(urls["urls"]):
         init["tweet_ids"].append(tweet_ids)
         init["url"].append(url)
 
+        fails = 0
+
     except:
         with open('data.pickle', 'wb+') as f:
             pickle.dump(init, f)
-        print("Checkpoint. Error in script. Data saved.")
-        sys.exit(0)
+        print("skipping url, dumping data.")
+        fails += 1
+
+        if fails > 5:
+            print("Probably a net issue. Exiting script")
+            sys.exit(1)
 
     cnt += 1
 
