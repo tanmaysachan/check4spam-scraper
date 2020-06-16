@@ -8,10 +8,17 @@ import urllib.request
 import sys
 from tqdm import tqdm
 
-options = webdriver.FirefoxOptions()
+# options = webdriver.FirefoxOptions()
+# options.add_argument('--headless')
+# options.add_argument('--log-level=3')
+# options.set_capability("marionette", True)
+# browser = webdriver.Firefox('./gecko',options=options)
+
+options = webdriver.ChromeOptions()
 options.add_argument('--headless')
 options.add_argument('--log-level=3')
-browser = webdriver.Firefox('./gecko',options=options)
+options.set_capability("marionette", True)
+browser = webdriver.Chrome(options=options)
 
 if not os.path.exists('fn_imgs'):
     os.makedirs('fn_imgs')
@@ -47,35 +54,38 @@ blacklist = [
 
 pages_to_scrape_for_article_links = 76
 
-for page in tqdm(range(pages_to_scrape_for_article_links)):
-    try:
+if urls["page_idx"] <= 75:
+    for page in tqdm(range(pages_to_scrape_for_article_links)):
+        try:
+            if page > 75 or urls["page_idx"] > 75:
+                # check4spam page 76 doesn't exist.
+                break
+            new_url = fake_news_url + r"page/" + str(urls["page_idx"])
+            browser.get(new_url)
+            time.sleep(7)
+            links = browser.find_elements_by_tag_name('a')
+            for link in links:
+                url = link.get_attribute('href')
+                if re.match(pattern, url) and url not in blacklist and r'/author/' not in url:
+                    try:
+                        urls["urls"].add(url)
+                    except:
+                        continue
+
+            urls["page_idx"] += 1
+        except:
+            with open('urls.pickle', 'wb+') as f:
+                pickle.dump(urls, f)
+            print('Checkpoint. Error in script, data saved.')
+            sys.exit(1)
+
         if page > 75 or urls["page_idx"] > 75:
             # check4spam page 76 doesn't exist.
             break
-        new_url = fake_news_url + r"page/" + str(urls["page_idx"])
-        browser.get(new_url)
-        time.sleep(7)
-        links = browser.find_elements_by_tag_name('a')
-        for link in links:
-            url = link.get_attribute('href')
-            if re.match(pattern, url) and url not in blacklist and r'/author/' not in url:
-                try:
-                    urls["urls"].add(url)
-                except:
-                    continue
 
-        urls["page_idx"] += 1
-    except:
-        with open('urls.pickle', 'wb+') as f:
-            pickle.dump(urls, f)
-        print('Checkpoint. Error in script, data saved.')
-        sys.exit(1)
 
-    if page > 75 or urls["page_idx"] > 75:
-        # check4spam page 76 doesn't exist.
-        break
-
-cnt = 1
+with open('urls.pickle', 'wb+') as f:
+    pickle.dump(urls, f)
 
 init = {
     "url": [],
@@ -96,76 +106,88 @@ except:
     pass
 
 fails = 0
+failed_urls = []
 
 for url in tqdm(urls["urls"]):
-    try:
-        if url in init["url"]:
-            print("url fetched...skipping")
-            continue
-
-        browser.get(url)
-        time.sleep(10)
-
+    attempts = 5
+    while attempts:
         try:
+            if url in init["url"]:
+                print("url fetched...skipping")
+                break
+
+            browser.get(url)
+            time.sleep(10)
+
             article = browser.find_element_by_class_name('entry-content')
-        except:
-            continue
 
-        paras = article.find_elements_by_tag_name('p')
-        text = ""
-        for p in paras:
-            text += p.text
-            text += '\n'
+            paras = article.find_elements_by_tag_name('p')
+            text = ""
+            for p in paras:
+                text += p.text
+                text += '\n'
 
-        text = text.replace('\n', ' ')
+            text = text.replace('\n', ' ')
 
-        images = article.find_elements_by_tag_name('img')
+            images = article.find_elements_by_tag_name('img')
 
-        links = []
-        for img in images:
-            link = img.get_attribute('srcset').split(' ')[0]
-            links.append(link)
+            links = []
+            for img in images:
+                link = img.get_attribute('srcset').split(' ')[0]
+                links.append(link)
 
-        for i in range(len(links)):
-            try:
-                filename = './fn_imgs/'+str(hash(url))+'_'+str(i)+'.jpg'
-                urllib.request.urlretrieve(links[i], filename)
-            except:
-                print(links[i])
+            for i in range(len(links)):
+                try:
+                    filename = './fn_imgs/'+str(hash(url))+'_'+str(i)+'.jpg'
+                    urllib.request.urlretrieve(links[i], filename)
+                except:
+                    print(links[i])
 
-        links = ','.join([i for i in links if i is not None])
+            links = ','.join([i for i in links if i is not None])
 
-        tweet_obj = article.find_elements_by_tag_name('twitter-widget')
-        tweets_text = ""
-        tweet_ids = []
-        for obj in tweet_obj:
-            tweets_text += obj.text
-            tweets_text += '^'
-            tweet_ids.append(obj.get_attribute('data-tweet-id'))
+            tweet_obj = article.find_elements_by_tag_name('twitter-widget')
+            tweets_text = ""
+            tweet_ids = []
+            for obj in tweet_obj:
+                tweets_text += obj.text
+                tweets_text += '^'
+                tweet_ids.append(obj.get_attribute('data-tweet-id'))
 
-        tweets_text = tweets_text.replace('\n', ' ')
-        tweet_ids = [i for i in tweet_ids if i is not None]
-        tweet_ids = ','.join(tweet_ids)
+            tweets_text = tweets_text.replace('\n', ' ')
+            tweet_ids = [i for i in tweet_ids if i is not None]
+            tweet_ids = ','.join(tweet_ids)
 
-        init["raw_text"].append(text)
-        init["image_links"].append(links)
-        init["tweets_text"].append(tweets_text)
-        init["tweet_ids"].append(tweet_ids)
-        init["url"].append(url)
+            init["raw_text"].append(text)
+            init["image_links"].append(links)
+            init["tweets_text"].append(tweets_text)
+            init["tweet_ids"].append(tweet_ids)
+            init["url"].append(url)
 
-        fails = 0
+            break
 
-    except:
+        except Exception as e:
+            print("failed to fetch url: " + url)
+            print("Error: ")
+            print(e)
+            print("retrying...")
+            attempts -= 1
+
+            browser.quit()
+            browser = webdriver.Chrome(options=options)
+
+    if attempts == 0:
         with open('data.pickle', 'wb+') as f:
             pickle.dump(init, f)
         print("skipping url, dumping data.")
         fails += 1
+        failed_urls.append(url)
 
-        if fails > 5:
-            print("Probably a net issue. Exiting script")
-            sys.exit(1)
+with open('data.pickle', 'wb+') as f:
+    pickle.dump(init, f)
 
-    cnt += 1
+print(str(fails) + " urls not scraped due to failure. List:")
+for i in failed_urls:
+    print(i)
 
 if os.path.isfile('data.csv'):
     os.replace('data.csv', 'data_backup.csv')
